@@ -182,190 +182,6 @@ pub struct ValueDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Enumuse crate::lexer::{Token, TokenType, Span};
-use std::collections::HashMap;
-use thiserror::Error;
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Type {
-    // Primitive types
-    Num,      // Generic number (ntr, int, flt)
-    Ntr,      // Natural number (unsigned)
-    Int,      // Integer
-    Flt,      // Float
-    Str,      // Generic string (fst, dst)
-    Fst,      // Fixed string
-    Dst,      // Dynamic string
-    Lst,      // Generic list (arr, vec, zip)
-    Arr(Box<Type>, usize), // Fixed array [Type; size]
-    Vec(Box<Type>),        // Dynamic vector [Type]
-    Zip(Vec<Type>),        // Zip tuple (Type, Type, ...)
-    Bit,      // Boolean
-    Nil,      // Void/null
-    Custom(String), // User-defined type
-    Flex(Vec<Type>), // Flexible type (multiple possibilities)
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum BinaryOp {
-    Add, Sub, Mul, Div, Mod,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum UnaryOp {
-    Not, Neg,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Expr {
-    Literal(Literal),
-    Identifier(String),
-    Binary {
-        left: Box<Expr>,
-        op: BinaryOp,
-        right: Box<Expr>,
-    },
-    Unary {
-        op: UnaryOp,
-        operand: Box<Expr>,
-    },
-    Call {
-        callee: String,
-        args: Vec<Expr>,
-    },
-    MemberAccess {
-        object: Box<Expr>,
-        member: String,
-    },
-    IndexAccess {
-        object: Box<Expr>,
-        index: Box<Expr>,
-    },
-    ArrayLiteral(Vec<Expr>),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Literal {
-    Number(f64),
-    String(String),
-    Boolean(bool),
-    Nil,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Stmt {
-    VarDecl {
-        name: String,
-        type_annotation: Option<Type>,
-        init: Expr,
-        is_flex: bool,
-    },
-    ConstDecl {
-        name: String,
-        type_annotation: Option<Type>,
-        init: Expr,
-    },
-    Assignment {
-        target: String,
-        value: Expr,
-        is_plus_assign: bool,
-    },
-    If {
-        condition: Expr,
-        then_branch: Vec<Stmt>,
-        else_ifs: Vec<(Expr, Vec<Stmt>)>,
-        else_branch: Option<Vec<Stmt>>,
-    },
-    While {
-        condition: Expr,
-        body: Vec<Stmt>,
-    },
-    For {
-        var_name: String,
-        var_type: Option<Type>,
-        iterable: Expr,
-        body: Vec<Stmt>,
-    },
-    ForEach {
-        var_name: String,
-        var_type: Option<Type>,
-        iterable: Expr,
-        body: Vec<Stmt>,
-    },
-    Match {
-        expr: Expr,
-        arms: Vec<MatchArm>,
-    },
-    Return(Option<Expr>),
-    Break,
-    Continue,
-    Expression(Expr),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MatchArm {
-    pub pattern: Expr,
-    pub body: Vec<Stmt>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Visibility {
-    Public,
-    Private,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Parameter {
-    pub name: String,
-    pub type_annotation: Option<Type>,
-    pub default_value: Option<Expr>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FunctionDef {
-    pub visibility: Option<Visibility>,
-    pub name: String,
-    pub return_type: Option<Type>,
-    pub parameters: Vec<Parameter>,
-    pub body: Vec<Stmt>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MapDef {
-    pub return_type: Option<Type>,
-    pub name: String,
-    pub match_expr: Expr,
-    pub arms: Vec<MatchArm>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FieldDef {
-    pub name: String,
-    pub components: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ComponentDef {
-    pub name: String,
-    pub required_components: Vec<String>,
-    pub values: Vec<ValueDecl>,
-    pub functions: Vec<FunctionDef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ValueDecl {
-    pub visibility: Option<Visibility>,
-    pub name: String,
-    pub type_annotation: Option<Type>,
-    pub init: Option<Expr>,
-    pub is_const: bool,
-    pub is_flex: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnumDef {
     pub name: String,
     pub variants: Vec<String>,
@@ -1016,17 +832,264 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
-        if self.match_token(&TokenType::Not) {
-            let operand = self.parse_unary()?;
-            Ok(Expr::Unary {
-                op: UnaryOp::Not,
-                operand: Box::new(operand),
-            })
-        } else if self.match_token(&TokenType::Minus) {
-            let operand = self.parse_unary()?;
-            Ok(Expr::Unary {
-                op: UnaryOp::Neg,
-                operand: Box::new(operand),
-            })
+    // Add these methods to the impl Parser block
+
+fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+    if self.match_token(&TokenType::Not) {
+        let operand = self.parse_unary()?;
+        Ok(Expr::Unary {
+            op: UnaryOp::Not,
+            operand: Box::new(operand),
+        })
+    } else if self.match_token(&TokenType::Minus) {
+        let operand = self.parse_unary()?;
+        Ok(Expr::Unary {
+            op: UnaryOp::Neg,
+            operand: Box::new(operand),
+        })
+    } else {
+        self.parse_primary()
+    }
+}
+
+fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+    match &self.peek().token_type {
+        TokenType::Number(n) => {
+            self.advance();
+            Ok(Expr::Literal(Literal::Number(*n)))
+        }
+        TokenType::String(s) => {
+            self.advance();
+            Ok(Expr::Literal(Literal::String(s.clone())))
+        }
+        TokenType::Boolean(b) => {
+            self.advance();
+            Ok(Expr::Literal(Literal::Boolean(*b)))
+        }
+        TokenType::Nil => {
+            self.advance();
+            Ok(Expr::Literal(Literal::Nil))
+        }
+        TokenType::Identifier(_) => {
+            let name = self.consume_identifier("Expected identifier")?;
+            
+            // Check if this is a function call
+            if self.match_token(&TokenType::LParen) {
+                let mut args = Vec::new();
+                if !self.check(&TokenType::RParen) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if !self.match_token(&TokenType::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&TokenType::RParen, "Expected ')' after arguments")?;
+                Ok(Expr::Call { callee: name, args })
+            } else {
+                Ok(Expr::Identifier(name))
+            }
+        }
+        TokenType::LParen => {
+            self.advance();
+            let expr = self.parse_expression()?;
+            self.consume(&TokenType::RParen, "Expected ')' after expression")?;
+            Ok(expr)
+        }
+        TokenType::LBracket => {
+            self.advance();
+            let mut elements = Vec::new();
+            if !self.check(&TokenType::RBracket) {
+                loop {
+                    elements.push(self.parse_expression()?);
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&TokenType::RBracket, "Expected ']' after array elements")?;
+            Ok(Expr::ArrayLiteral(elements))
+        }
+        _ => Err(ParseError::InvalidExpression),
+    }
+}
+
+fn parse_type_annotation(&mut self) -> Result<Type, ParseError> {
+    self.consume(&TokenType::Lt, "Expected '<' for type annotation")?;
+    
+    let ty = match &self.peek().token_type {
+        TokenType::Arr => {
+            self.advance();
+            self.consume(&TokenType::LBracket, "Expected '[' after 'arr'")?;
+            let element_type = Box::new(self.parse_type_annotation()?);
+            self.consume(&TokenType::Semicolon, "Expected ';' in array type")?;
+            let size = if let TokenType::Number(n) = &self.peek().token_type {
+                let size = *n as usize;
+                self.advance();
+                size
+            } else {
+                return Err(ParseError::InvalidType("Expected array size".to_string()));
+            };
+            self.consume(&TokenType::RBracket, "Expected ']' after array size")?;
+            Type::Arr(element_type, size)
+        }
+        TokenType::Vec => {
+            self.advance();
+            self.consume(&TokenType::LBracket, "Expected '[' after 'vec'")?;
+            let element_type = Box::new(self.parse_type_annotation()?);
+            self.consume(&TokenType::RBracket, "Expected ']' after vector type")?;
+            Type::Vec(element_type)
+        }
+        TokenType::Zip => {
+            self.advance();
+            self.consume(&TokenType::LParen, "Expected '(' after 'zip'")?;
+            let mut types = Vec::new();
+            if !self.check(&TokenType::RParen) {
+                loop {
+                    types.push(self.parse_type_annotation()?);
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&TokenType::RParen, "Expected ')' after zip types")?;
+            Type::Zip(types)
+        }
+        TokenType::Num => { self.advance(); Type::Num }
+        TokenType::Ntr => { self.advance(); Type::Ntr }
+        TokenType::Int => { self.advance(); Type::Int }
+        TokenType::Flt => { self.advance(); Type::Flt }
+        TokenType::Str => { self.advance(); Type::Str }
+        TokenType::Fst => { self.advance(); Type::Fst }
+        TokenType::Dst => { self.advance(); Type::Dst }
+        TokenType::Lst => { self.advance(); Type::Lst }
+        TokenType::Bit => { self.advance(); Type::Bit }
+        TokenType::Nil => { self.advance(); Type::Nil }
+        TokenType::Identifier(name) => {
+            self.advance();
+            Type::Custom(name.clone())
+        }
+        _ => return Err(ParseError::InvalidType("Expected valid type".to_string())),
+    };
+    
+    self.consume(&TokenType::Gt, "Expected '>' after type annotation")?;
+    Ok(ty)
+}
+
+    // Utility methods needed:
+
+    fn match_token(&mut self, token_type: &TokenType) -> bool {
+        if self.check(token_type) {
+            self.advance();
+            true
         } else {
+            false
+        }
+    }
+
+    fn check(&self, token_type: &TokenType) -> bool {
+        if self.is_at_end() {
+            false
+        } else {
+            &self.peek().token_type == token_type
+        }
+    }
+
+    fn advance(&mut self) -> &Token {
+        if !self.is_at_end() {
+            self.current += 1;
+        }
+        self.previous()
+    }
+
+    fn previous(&self) -> &Token {
+        &self.tokens[self.current - 1]
+    }
+
+    fn peek(&self) -> &Token {
+        &self.tokens[self.current]
+    }
+
+    fn is_at_end(&self) -> bool {
+        self.peek().token_type == TokenType::EOF
+    }
+
+    fn consume(&mut self, token_type: &TokenType, message: &str) -> Result<(), ParseError> {
+        if self.check(token_type) {
+            self.advance();
+            Ok(())
+        } else {
+            let token = self.peek();
+            Err(ParseError::UnexpectedToken {
+                line: token.span.line,
+                column: token.span.column,
+                expected: format!("{:?}", token_type),
+                found: format!("{:?}", token.token_type),
+            })
+        }
+    }
+
+    fn consume_identifier(&mut self, message: &str) -> Result<String, ParseError> {
+        if let TokenType::Identifier(name) = &self.peek().token_type {
+            let name = name.clone();
+            self.advance();
+            Ok(name)
+        } else {
+            let token = self.peek();
+            Err(ParseError::UnexpectedToken {
+                line: token.span.line,
+                column: token.span.column,
+                expected: "identifier".to_string(),
+                found: format!("{:?}", token.token_type),
+            })
+        }
+    }
+
+// Operator matching helpers:
+
+    fn match_equality_op(&mut self) -> Option<BinaryOp> {
+        if self.match_token(&TokenType::Eq) {
+            Some(BinaryOp::Eq)
+        } else if self.match_token(&TokenType::Ne) {
+            Some(BinaryOp::Ne)
+        } else {
+            None
+        }
+    }
+
+    fn match_comparison_op(&mut self) -> Option<BinaryOp> {
+        if self.match_token(&TokenType::Lt) {
+            Some(BinaryOp::Lt)
+        } else if self.match_token(&TokenType::Le) {
+            Some(BinaryOp::Le)
+        } else if self.match_token(&TokenType::Gt) {
+            Some(BinaryOp::Gt)
+        } else if self.match_token(&TokenType::Ge) {
+            Some(BinaryOp::Ge)
+        } else {
+            None
+        }
+    }
+
+    fn match_term_op(&mut self) -> Option<BinaryOp> {
+        if self.match_token(&TokenType::Plus) {
+            Some(BinaryOp::Add)
+        } else if self.match_token(&TokenType::Minus) {
+            Some(BinaryOp::Sub)
+        } else {
+            None
+        }
+    }
+
+    fn match_factor_op(&mut self) -> Option<BinaryOp> {
+        if self.match_token(&TokenType::Multiply) {
+            Some(BinaryOp::Mul)
+        } else if self.match_token(&TokenType::Divide) {
+            Some(BinaryOp::Div)
+        } else if self.match_token(&TokenType::Modulo) {
+            Some(BinaryOp::Mod)
+        } else {
+            None
+        }
+    }
+}
