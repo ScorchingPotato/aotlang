@@ -1,0 +1,153 @@
+WHITESPACE = _{ " " | "\t" | "\r" }
+COMMENT = _{ "//" ~ (!"\n" ~ ANY)* | "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+// Keywords
+def = { "def" }
+map = { "map" }
+field = { "field" }
+comp = { "comp" }
+enum = { "enum" }
+var = { "var" }
+flex = { "flex" }
+const = { "const" }
+if = { "if" }
+else = { "else" }
+while = { "while" }
+for = { "for" }
+foreach = { "foreach" }
+match = { "match" }
+return = { "return" }
+break = { "break" }
+continue = { "continue" }
+in = { "in" }
+use = { "use" }
+req = { "req" }
+val = { "val" }
+impl = { "impl" }
+pub = { "pub" }
+prv = { "prv" }
+
+// Types
+num = { "num" }
+ntr = { "ntr" }
+int = { "int" }
+flt = { "flt" }
+str = { "str" }
+fst = { "fst" }
+dst = { "dst" }
+lst = { "lst" }
+arr = { "arr" }
+vec = { "vec" }
+zip = { "zip" }
+bit = { "bit" }
+nil = { "nil" }
+
+// Literals
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+boolean = { "true" | "false" }
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Operators
+plus = { "+" }
+minus = { "-" }
+multiply = { "*" }
+divide = { "/" }
+modulo = { "%" }
+assign = { "=" }
+plus_assign = { "+=" }
+eq = { "==" }
+ne = { "!=" }
+lt = { "<" }
+le = { "<=" }
+gt = { ">" }
+ge = { ">=" }
+not = { "!" }
+and = { "&&" }
+or = { "||" }
+arrow = { "=>" }
+
+// Punctuation
+lparen = { "(" }
+rparen = { ")" }
+lbracket = { "[" }
+rbracket = { "]" }
+lbrace = { "{" }
+rbrace = { "}" }
+comma = { "," }
+semicolon = { ";" }
+colon = { ":" }
+dot = { "." }
+
+// Program structure
+program = { SOI ~ item* ~ EOI }
+item = { function_def | map_def | field_def | component_def | enum_def | statement }
+
+// Definitions
+function_def = { visibility? ~ def ~ type_annotation? ~ identifier ~ lparen ~ parameter_list? ~ rparen ~ colon ~ statement_block }
+map_def = { map ~ type_annotation? ~ identifier ~ colon ~ match ~ expression ~ colon ~ match_arm* }
+field_def = { field ~ identifier ~ colon ~ use ~ colon ~ identifier_list }
+component_def = { comp ~ identifier ~ colon ~ req_block? ~ val_block? ~ impl_block? }
+enum_def = { enum ~ identifier ~ colon ~ identifier_list }
+
+// Component blocks
+req_block = { req ~ colon ~ identifier_list }
+val_block = { visibility? ~ val ~ colon ~ value_decl* }
+impl_block = { visibility? ~ impl ~ colon ~ function_def* }
+
+// Parameters and values
+parameter_list = { parameter ~ (comma ~ parameter)* }
+parameter = { identifier ~ type_annotation? ~ (assign ~ expression)? }
+value_decl = { visibility? ~ (const | flex | var) ~ identifier ~ type_annotation? ~ (assign ~ expression)? ~ semicolon }
+
+// Statements
+statement = { var_decl | const_decl | assignment | if_stmt | while_stmt | for_stmt | foreach_stmt | match_stmt | return_stmt | break_stmt | continue_stmt | expression_stmt }
+statement_block = { statement* }
+
+var_decl = { (flex | var) ~ identifier ~ type_annotation? ~ assign ~ expression ~ semicolon }
+const_decl = { const ~ identifier ~ type_annotation? ~ assign ~ expression ~ semicolon }
+assignment = { identifier ~ (assign | plus_assign) ~ expression ~ semicolon }
+if_stmt = { if ~ expression ~ colon ~ statement_block ~ (else ~ if ~ expression ~ colon ~ statement_block)* ~ (else ~ colon ~ statement_block)? }
+while_stmt = { while ~ expression ~ colon ~ statement_block }
+for_stmt = { for ~ (flex | var) ~ identifier ~ type_annotation? ~ in ~ expression ~ colon ~ statement_block }
+foreach_stmt = { foreach ~ (flex | var) ~ identifier ~ type_annotation? ~ in ~ expression ~ colon ~ statement_block }
+match_stmt = { match ~ expression ~ colon ~ match_arm* }
+return_stmt = { return ~ expression? ~ semicolon }
+break_stmt = { break ~ semicolon }
+continue_stmt = { continue ~ semicolon }
+expression_stmt = { expression ~ semicolon }
+
+// Match arms
+match_arm = { expression ~ arrow ~ (lbrace ~ statement_block ~ rbrace | expression) ~ comma? }
+
+// Expressions
+expression = { equality }
+equality = { comparison ~ (eq_op ~ comparison)* }
+comparison = { term ~ (comp_op ~ term)* }
+term = { factor ~ (add_op ~ factor)* }
+factor = { unary ~ (mul_op ~ unary)* }
+unary = { (not | minus) ~ unary | postfix }
+postfix = { primary ~ (member_access | index_access | function_call)* }
+primary = { number | string | boolean | identifier | array_literal | lparen ~ expression ~ rparen }
+
+// Expression components
+eq_op = { eq | ne }
+comp_op = { le | ge | lt | gt }
+add_op = { plus | minus }
+mul_op = { multiply | divide | modulo }
+
+member_access = { dot ~ identifier }
+index_access = { lbracket ~ expression ~ rbracket }
+function_call = { lparen ~ expression_list? ~ rparen }
+array_literal = { lbracket ~ expression_list? ~ rbracket }
+
+// Utilities
+expression_list = { expression ~ (comma ~ expression)* }
+identifier_list = { identifier ~ (comma ~ identifier)* }
+type_annotation = { lt ~ type_expr ~ gt }
+type_expr = { arr_type | vec_type | zip_type | basic_type | identifier }
+arr_type = { arr ~ lbracket ~ type_expr ~ semicolon ~ number ~ rbracket }
+vec_type = { vec ~ lbracket ~ type_expr ~ rbracket }
+zip_type = { zip ~ lparen ~ type_expr ~ (comma ~ type_expr)* ~ rparen }
+basic_type = { num | ntr | int | flt | str | fst | dst | lst | bit | nil }
+visibility = { pub | prv }
