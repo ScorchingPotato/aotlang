@@ -19,7 +19,6 @@ pub struct Span {
 pub enum TokenType {
     // Keywords
     Def,
-    Map,
     Field,
     Comp,
     Enum,
@@ -388,7 +387,6 @@ impl Lexer {
         let token_type = match text {
             // Keywords
             "def" => TokenType::Def,
-            "map" => TokenType::Map,
             "field" => TokenType::Field,
             "comp" => TokenType::Comp,
             "enum" => TokenType::Enum,

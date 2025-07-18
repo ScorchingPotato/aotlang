@@ -3,7 +3,6 @@ COMMENT = _{ "//" ~ (!"\n" ~ ANY)* | "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
 // Keywords
 def = { "def" }
-map = { "map" }
 field = { "field" }
 comp = { "comp" }
 enum = { "enum" }
@@ -81,11 +80,10 @@ dot = { "." }
 
 // Program structure
 program = { SOI ~ item* ~ EOI }
-item = { function_def | map_def | field_def | component_def | enum_def | statement }
+item = { function_def | field_def | component_def | enum_def | statement }
 
 // Definitions
 function_def = { visibility? ~ def ~ type_annotation? ~ identifier ~ lparen ~ parameter_list? ~ rparen ~ colon ~ statement_block }
-map_def = { map ~ type_annotation? ~ identifier ~ colon ~ match ~ expression ~ colon ~ match_arm* }
 field_def = { field ~ identifier ~ colon ~ use ~ colon ~ identifier_list }
 component_def = { comp ~ identifier ~ colon ~ req_block? ~ val_block? ~ impl_block? }
 enum_def = { enum ~ identifier ~ colon ~ identifier_list }

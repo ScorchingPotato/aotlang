@@ -1,4 +1,4 @@
-use aot_compiler::lexer;
+use aot_compiler::{lexer, parser};
 use std::panic::panic_any;
 use std::path::Path;
 use std::io::prelude::*;
@@ -18,7 +18,11 @@ fn main() {
     }
 
     let mut l = lexer::Lexer::new(code);
-    for t in l.tokenize().unwrap() {
+    let tokens = l.tokenize().unwrap();
+    for t in &tokens {
         println!("{:?}",t)
     }
+    let mut p = parser::Parser::new(tokens);
+    let program = p.parse().unwrap();
+    println!("{}",program.print())
 }

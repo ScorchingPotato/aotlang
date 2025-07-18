@@ -56,6 +56,11 @@ pub enum Expr {
         object: Box<Expr>,
         member: String,
     },
+    MemberCall {
+        object: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+    },
     IndexAccess {
         object: Box<Expr>,
         index: Box<Expr>,
@@ -115,6 +120,18 @@ pub enum Stmt {
         expr: Expr,
         arms: Vec<MatchArm>,
     },
+    MemberAssignment {
+        object: Expr,
+        member: String,
+        value: Expr,
+        is_plus_assign: bool,
+    },
+    IndexAssignment {
+        object: Expr,
+        index: Expr,
+        value: Expr,
+        is_plus_assign: bool,
+    },
     Return(Option<Expr>),
     Break,
     Continue,
@@ -149,13 +166,7 @@ pub struct FunctionDef {
     pub body: Vec<Stmt>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MapDef {
-    pub return_type: Option<Type>,
-    pub name: String,
-    pub match_expr: Expr,
-    pub arms: Vec<MatchArm>,
-}
+
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldDef {
@@ -190,7 +201,6 @@ pub struct EnumDef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Item {
     Function(FunctionDef),
-    Map(MapDef),
     Field(FieldDef),
     Component(ComponentDef),
     Enum(EnumDef),
@@ -200,6 +210,239 @@ pub enum Item {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Program {
     pub items: Vec<Item>,
+}
+
+use std::fmt::Write;
+
+impl Program {
+    pub fn print(&self) -> String {
+        let mut output = String::new();
+        writeln!(output, "Program {{").unwrap();
+        
+        for (i, item) in self.items.iter().enumerate() {
+            writeln!(output, "  Item[{}]:", i).unwrap();
+            print_item(&mut output, item, 2);
+        }
+        
+        writeln!(output, "}}").unwrap();
+        output
+    }
+}
+
+fn print_item(output: &mut String, item: &Item, indent: usize) {
+    let spaces = "  ".repeat(indent);
+    
+    match item {
+        Item::Function(func) => {
+            writeln!(output, "{}Function {{", spaces).unwrap();
+            writeln!(output, "{}  name: \"{}\"", spaces, func.name).unwrap();
+            writeln!(output, "{}  visibility: {:?}", spaces, func.visibility).unwrap();
+            writeln!(output, "{}  return_type: {:?}", spaces, func.return_type).unwrap();
+            writeln!(output, "{}  parameters: [", spaces).unwrap();
+            for param in &func.parameters {
+                writeln!(output, "{}    Parameter {{ name: \"{}\", type: {:?}, default: {:?} }}", 
+                    spaces, param.name, param.type_annotation, param.default_value).unwrap();
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}  body: [", spaces).unwrap();
+            for stmt in &func.body {
+                print_stmt(output, stmt, indent + 3);
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Item::Field(field) => {
+            writeln!(output, "{}Field {{", spaces).unwrap();
+            writeln!(output, "{}  name: \"{}\"", spaces, field.name).unwrap();
+            writeln!(output, "{}  components: {:?}", spaces, field.components).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Item::Component(comp) => {
+            writeln!(output, "{}Component {{", spaces).unwrap();
+            writeln!(output, "{}  name: \"{}\"", spaces, comp.name).unwrap();
+            writeln!(output, "{}  required_components: {:?}", spaces, comp.required_components).unwrap();
+            writeln!(output, "{}  values: [", spaces).unwrap();
+            for value in &comp.values {
+                writeln!(output, "{}    ValueDecl {{ name: \"{}\", visibility: {:?} , type: {:?}, is_const: {}, is_flex: {} }}", 
+                    spaces, value.name, value.visibility, value.type_annotation, value.is_const, value.is_flex).unwrap();
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}  functions: [", spaces).unwrap();
+            for func in &comp.functions {
+                writeln!(output, "{}    Function {{ name: \"{}\", visibility: {:?} , return_type: {:?}", spaces, func.name, func.visibility, func.return_type).unwrap();
+                writeln!(output, "{}      parameters: [", spaces).unwrap();
+                for param in &func.parameters {
+                    writeln!(output, "{}        Parameter {{ name: \"{}\", type: {:?}, default: {:?} }}", 
+                        spaces, param.name, param.type_annotation, param.default_value).unwrap();
+                }
+                writeln!(output, "{}      ]", spaces).unwrap();
+                writeln!(output, "{}      body: [", spaces).unwrap();
+                for stmt in &func.body {
+                    print_stmt(output, stmt, indent + 3);
+                }
+                writeln!(output, "{}      ]", spaces).unwrap();
+                writeln!(output, "{}    }}", spaces).unwrap();
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Item::Enum(enum_def) => {
+            writeln!(output, "{}Enum {{", spaces).unwrap();
+            writeln!(output, "{}  name: \"{}\"", spaces, enum_def.name).unwrap();
+            writeln!(output, "{}  variants: {:?}", spaces, enum_def.variants).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Item::Statement(stmt) => {
+            writeln!(output, "{}Statement:", spaces).unwrap();
+            print_stmt(output, stmt, indent + 1);
+        }
+    }
+}
+
+fn print_stmt(output: &mut String, stmt: &Stmt, indent: usize) {
+    let spaces = "  ".repeat(indent);
+    
+    match stmt {
+        Stmt::VarDecl { name, type_annotation, init, is_flex } => {
+            writeln!(output, "{}VarDecl {{ name: \"{}\", type: {:?}, is_flex: {}, init: {} }}", 
+                spaces, name, type_annotation, is_flex, expr_to_string(init)).unwrap();
+        }
+        Stmt::ConstDecl { name, type_annotation, init } => {
+            writeln!(output, "{}ConstDecl {{ name: \"{}\", type: {:?}, init: {} }}", 
+                spaces, name, type_annotation, expr_to_string(init)).unwrap();
+        }
+        Stmt::Assignment { target, value, is_plus_assign } => {
+            let op = if *is_plus_assign { "+=" } else { "=" };
+            writeln!(output, "{}Assignment {{ target: \"{}\", op: \"{}\", value: {} }}", 
+                spaces, target, op, expr_to_string(value)).unwrap();
+        }
+        Stmt::MemberAssignment { object, member, value, is_plus_assign } => {
+            let op = if *is_plus_assign { "+=" } else { "=" };
+            writeln!(output, "{}MemberAssignment {{ object: {}, member: \"{}\", op: \"{}\", value: {} }}", 
+                spaces, expr_to_string(object), member, op, expr_to_string(value)).unwrap();
+        }
+        Stmt::IndexAssignment { object, index, value, is_plus_assign } => {
+            let op = if *is_plus_assign { "+=" } else { "=" };
+            writeln!(output, "{}IndexAssignment {{ object: {}, index: {}, op: \"{}\", value: {} }}", 
+                spaces, expr_to_string(object), expr_to_string(index), op, expr_to_string(value)).unwrap();
+        }
+        Stmt::If { condition, then_branch, else_ifs, else_branch } => {
+            writeln!(output, "{}If {{", spaces).unwrap();
+            writeln!(output, "{}  condition: {}", spaces, expr_to_string(condition)).unwrap();
+            writeln!(output, "{}  then_branch: [", spaces).unwrap();
+            for stmt in then_branch {
+                print_stmt(output, stmt, indent + 2);
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            if !else_ifs.is_empty() {
+                writeln!(output, "{}  else_ifs: [", spaces).unwrap();
+                for (cond, body) in else_ifs {
+                    writeln!(output, "{}    ElseIf {{ condition: {}, body: [...] }}", spaces, expr_to_string(cond)).unwrap();
+                }
+                writeln!(output, "{}  ]", spaces).unwrap();
+            }
+            if let Some(else_body) = else_branch {
+                writeln!(output, "{}  else_branch: [", spaces).unwrap();
+                for stmt in else_body {
+                    print_stmt(output, stmt, indent + 2);
+                }
+                writeln!(output, "{}  ]", spaces).unwrap();
+            }
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Stmt::While { condition, body } => {
+            writeln!(output, "{}While {{", spaces).unwrap();
+            writeln!(output, "{}  condition: {}", spaces, expr_to_string(condition)).unwrap();
+            writeln!(output, "{}  body: [", spaces).unwrap();
+            for stmt in body {
+                print_stmt(output, stmt, indent + 2);
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Stmt::For { var_name, var_type, iterable, body } => {
+            writeln!(output, "{}For {{", spaces).unwrap();
+            writeln!(output, "{}  var_name: \"{}\", var_type: {:?}", spaces, var_name, var_type).unwrap();
+            writeln!(output, "{}  iterable: {}", spaces, expr_to_string(iterable)).unwrap();
+            writeln!(output, "{}  body: [", spaces).unwrap();
+            for stmt in body {
+                print_stmt(output, stmt, indent + 2);
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Stmt::ForEach { var_name, var_type, iterable, body } => {
+            writeln!(output, "{}ForEach {{", spaces).unwrap();
+            writeln!(output, "{}  var_name: \"{}\", var_type: {:?}", spaces, var_name, var_type).unwrap();
+            writeln!(output, "{}  iterable: {}", spaces, expr_to_string(iterable)).unwrap();
+            writeln!(output, "{}  body: [", spaces).unwrap();
+            for stmt in body {
+                print_stmt(output, stmt, indent + 2);
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Stmt::Match { expr, arms } => {
+            writeln!(output, "{}Match {{", spaces).unwrap();
+            writeln!(output, "{}  expr: {}", spaces, expr_to_string(expr)).unwrap();
+            writeln!(output, "{}  arms: [", spaces).unwrap();
+            for arm in arms {
+                writeln!(output, "{}    MatchArm {{ pattern: {}, body: [...] }}", 
+                    spaces, expr_to_string(&arm.pattern)).unwrap();
+            }
+            writeln!(output, "{}  ]", spaces).unwrap();
+            writeln!(output, "{}}}", spaces).unwrap();
+        }
+        Stmt::Return(expr) => {
+            writeln!(output, "{}Return({})", spaces, 
+                expr.as_ref().map_or("None".to_string(), |e| expr_to_string(e))).unwrap();
+        }
+        Stmt::Break => {
+            writeln!(output, "{}Break", spaces).unwrap();
+        }
+        Stmt::Continue => {
+            writeln!(output, "{}Continue", spaces).unwrap();
+        }
+        Stmt::Expression(expr) => {
+            writeln!(output, "{}Expression({})", spaces, expr_to_string(expr)).unwrap();
+        }
+    }
+}
+
+fn expr_to_string(expr: &Expr) -> String {
+    match expr {
+        Expr::Literal(lit) => match lit {
+            Literal::Number(n) => n.to_string(),
+            Literal::String(s) => format!("\"{}\"", s),
+            Literal::Boolean(b) => b.to_string(),
+            Literal::Nil => "nil".to_string(),
+        },
+        Expr::Identifier(name) => name.clone(),
+        Expr::Binary { left, op, right } => {
+            format!("({} {:?} {})", expr_to_string(left), op, expr_to_string(right))
+        }
+        Expr::Unary { op, operand } => {
+            format!("({:?} {})", op, expr_to_string(operand))
+        }
+        Expr::Call { callee, args } => {
+            let args_str = args.iter().map(expr_to_string).collect::<Vec<_>>().join(", ");
+            format!("{}({})", callee, args_str)
+        }
+        Expr::MemberAccess { object, member } => {
+            format!("{}.{}", expr_to_string(object), member)
+        }
+        Expr::MemberCall { object, method, args } => {
+            let args_str = args.iter().map(expr_to_string).collect::<Vec<_>>().join(", ");
+            format!("{}.{}({})", expr_to_string(object), method, args_str)
+        }
+        Expr::IndexAccess { object, index } => {
+            format!("{}[{}]", expr_to_string(object), expr_to_string(index))
+        }
+        Expr::ArrayLiteral(elements) => {
+            let elements_str = elements.iter().map(expr_to_string).collect::<Vec<_>>().join(", ");
+            format!("[{}]", elements_str)
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -233,7 +476,22 @@ impl Parser {
             if self.match_token(&TokenType::EOF) {
                 break;
             }
-            items.push(self.parse_item()?);
+            
+            // Skip over any newlines or whitespace tokens if they exist
+            // The main fix: make sure we don't skip over important tokens
+            if self.is_at_end() {
+                break;
+            }
+            
+            match self.parse_item() {
+                Ok(item) => items.push(item),
+                Err(e) => {
+                    // For debugging: you might want to print the error
+                    eprintln!("Parse error: {:?}", e);
+                    eprintln!("Current token: {:?}", self.peek());
+                    return Err(e);
+                }
+            }
         }
         
         Ok(Program { items })
@@ -249,13 +507,26 @@ impl Parser {
             None
         };
 
+        // The main issue was here - we need to check the current token, not peek
         match &self.peek().token_type {
-            TokenType::Def => Ok(Item::Function(self.parse_function(visibility)?)),
-            TokenType::Map => Ok(Item::Map(self.parse_map()?)),
+            TokenType::Def => {
+                Ok(Item::Function(self.parse_function(visibility)?))
+            },
             TokenType::Field => Ok(Item::Field(self.parse_field()?)),
             TokenType::Comp => Ok(Item::Component(self.parse_component()?)),
             TokenType::Enum => Ok(Item::Enum(self.parse_enum()?)),
-            _ => Ok(Item::Statement(self.parse_statement()?)),
+            _ => {
+                // If no visibility modifier was consumed, try parsing as statement
+                if visibility.is_some() {
+                    return Err(ParseError::UnexpectedToken {
+                        line: self.peek().span.line,
+                        column: self.peek().span.column,
+                        expected: "def, field, comp, or enum after visibility modifier".to_string(),
+                        found: format!("{:?}", self.peek().token_type),
+                    });
+                }
+                Ok(Item::Statement(self.parse_statement()?))
+            },
         }
     }
 
@@ -315,35 +586,6 @@ impl Parser {
         })
     }
 
-    fn parse_map(&mut self) -> Result<MapDef, ParseError> {
-        self.consume(&TokenType::Map, "Expected 'map'")?;
-        
-        let return_type = if self.check(&TokenType::Lt) {
-            Some(self.parse_type_annotation()?)
-        } else {
-            None
-        };
-        
-        let name = self.consume_identifier("Expected map name")?;
-        self.consume(&TokenType::Colon, "Expected ':' after map name")?;
-        self.consume(&TokenType::Match, "Expected 'match' in map definition")?;
-        
-        let match_expr = self.parse_expression()?;
-        self.consume(&TokenType::Colon, "Expected ':' after match expression")?;
-        
-        let mut arms = Vec::new();
-        while !self.is_at_end() && !self.check(&TokenType::Def) && !self.check(&TokenType::Map) && 
-              !self.check(&TokenType::Field) && !self.check(&TokenType::Comp) && !self.check(&TokenType::Enum) {
-            arms.push(self.parse_match_arm()?);
-        }
-        
-        Ok(MapDef {
-            return_type,
-            name,
-            match_expr,
-            arms,
-        })
-    }
 
     fn parse_field(&mut self) -> Result<FieldDef, ParseError> {
         self.consume(&TokenType::Field, "Expected 'field'")?;
@@ -395,7 +637,8 @@ impl Parser {
                 None
             };
             
-            while !self.check(&TokenType::Impl) && !self.is_at_end() {
+            while !self.check(&TokenType::Impl) && !self.is_at_end() && 
+                !self.check(&TokenType::Field) && !self.check(&TokenType::Comp) && !self.check(&TokenType::Enum) {
                 let visibility = if self.match_token(&TokenType::Pub) {
                     Some(Visibility::Public)
                 } else if self.match_token(&TokenType::Prv) {
@@ -449,8 +692,25 @@ impl Parser {
                 Some(Visibility::Public) // Default to public for impl
             };
             
-            while !self.is_at_end() && !self.check(&TokenType::Def) && !self.check(&TokenType::Map) && 
-                  !self.check(&TokenType::Field) && !self.check(&TokenType::Comp) && !self.check(&TokenType::Enum) {
+            // Fixed: Now we look for 'def' tokens to parse functions within impl
+            while !self.is_at_end() && 
+                !self.check(&TokenType::Field) && !self.check(&TokenType::Comp) && !self.check(&TokenType::Enum) {
+                
+                // Check if we've reached the end of the impl block (next top-level item)
+                if self.check(&TokenType::Pub) || self.check(&TokenType::Prv) {
+                    // Look ahead to see if this is a top-level declaration
+                    let saved_pos = self.current;
+                    self.advance(); // consume pub/prv
+                    if self.check(&TokenType::Field) || self.check(&TokenType::Comp) || self.check(&TokenType::Enum) {
+                        // This is a top-level declaration, restore position and break
+                        self.current = saved_pos;
+                        break;
+                    }
+                    // Not a top-level declaration, restore position and continue
+                    self.current = saved_pos;
+                }
+                
+                // Parse function visibility
                 let visibility = if self.match_token(&TokenType::Pub) {
                     Some(Visibility::Public)
                 } else if self.match_token(&TokenType::Prv) {
@@ -459,7 +719,13 @@ impl Parser {
                     impl_visibility.clone()
                 };
                 
-                functions.push(self.parse_function(visibility)?);
+                // We expect a function definition here
+                if self.check(&TokenType::Def) {
+                    functions.push(self.parse_function(visibility)?);
+                } else {
+                    // If we don't see a def, we're probably at the end of the impl block
+                    break;
+                }
             }
         }
         
@@ -488,54 +754,77 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
-        match &self.peek().token_type {
-            TokenType::Var | TokenType::Flex => self.parse_var_decl(),
-            TokenType::Const => self.parse_const_decl(),
-            TokenType::If => self.parse_if_stmt(),
-            TokenType::While => self.parse_while_stmt(),
-            TokenType::For => self.parse_for_stmt(),
-            TokenType::Foreach => self.parse_foreach_stmt(),
-            TokenType::Match => self.parse_match_stmt(),
-            TokenType::Return => self.parse_return_stmt(),
-            TokenType::Break => {
-                self.advance();
-                self.consume(&TokenType::Semicolon, "Expected ';' after 'break'")?;
-                Ok(Stmt::Break)
-            }
-            TokenType::Continue => {
-                self.advance();
-                self.consume(&TokenType::Semicolon, "Expected ';' after 'continue'")?;
-                Ok(Stmt::Continue)
-            }
-            TokenType::Identifier(_) => {
-                // Could be assignment or expression
-                let checkpoint = self.current;
-                let identifier = self.consume_identifier("Expected identifier")?;
+    match &self.peek().token_type {
+        TokenType::Var | TokenType::Flex => self.parse_var_decl(),
+        TokenType::Const => self.parse_const_decl(),
+        TokenType::If => self.parse_if_stmt(),
+        TokenType::While => self.parse_while_stmt(),
+        TokenType::For => self.parse_for_stmt(),
+        TokenType::Foreach => self.parse_foreach_stmt(),
+        TokenType::Match => self.parse_match_stmt(),
+        TokenType::Return => self.parse_return_stmt(),
+        TokenType::Break => {
+            self.advance();
+            self.consume(&TokenType::Semicolon, "Expected ';' after 'break'")?;
+            Ok(Stmt::Break)
+        }
+        TokenType::Continue => {
+            self.advance();
+            self.consume(&TokenType::Semicolon, "Expected ';' after 'continue'")?;
+            Ok(Stmt::Continue)
+        }
+        TokenType::Identifier(_) => {
+            // Could be assignment, member assignment, index assignment, or expression
+            let expr = self.parse_expression()?;
+            
+            // Check if this is an assignment
+            if self.match_token(&TokenType::Assign) || self.match_token(&TokenType::PlusAssign) {
+                let is_plus_assign = self.previous().token_type == TokenType::PlusAssign;
+                let value = self.parse_expression()?;
+                self.consume(&TokenType::Semicolon, "Expected ';' after assignment")?;
                 
-                if self.match_token(&TokenType::Assign) || self.match_token(&TokenType::PlusAssign) {
-                    let is_plus_assign = self.previous().token_type == TokenType::PlusAssign;
-                    let value = self.parse_expression()?;
-                    self.consume(&TokenType::Semicolon, "Expected ';' after assignment")?;
-                    Ok(Stmt::Assignment {
-                        target: identifier,
-                        value,
-                        is_plus_assign,
-                    })
-                } else {
-                    // Reset and parse as expression
-                    self.current = checkpoint;
-                    let expr = self.parse_expression()?;
-                    self.consume(&TokenType::Semicolon, "Expected ';' after expression")?;
-                    Ok(Stmt::Expression(expr))
+                // Create appropriate assignment based on expression type
+                match expr {
+                    Expr::Identifier(name) => {
+                        Ok(Stmt::Assignment {
+                            target: name,
+                            value,
+                            is_plus_assign,
+                        })
+                    }
+                    Expr::MemberAccess { object, member } => {
+                        Ok(Stmt::MemberAssignment {
+                            object: *object,
+                            member,
+                            value,
+                            is_plus_assign,
+                        })
+                    }
+                    Expr::IndexAccess { object, index } => {
+                        Ok(Stmt::IndexAssignment {
+                            object: *object,
+                            index: *index,
+                            value,
+                            is_plus_assign,
+                        })
+                    }
+                    _ => {
+                        Err(ParseError::InvalidStatement)
+                    }
                 }
-            }
-            _ => {
-                let expr = self.parse_expression()?;
+            } else {
+                // Not an assignment, treat as expression statement
                 self.consume(&TokenType::Semicolon, "Expected ';' after expression")?;
                 Ok(Stmt::Expression(expr))
             }
         }
+        _ => {
+            let expr = self.parse_expression()?;
+            self.consume(&TokenType::Semicolon, "Expected ';' after expression")?;
+            Ok(Stmt::Expression(expr))
+        }
     }
+}
 
     fn parse_var_decl(&mut self) -> Result<Stmt, ParseError> {
         let is_flex = self.match_token(&TokenType::Flex);
@@ -683,7 +972,7 @@ impl Parser {
         self.consume(&TokenType::Colon, "Expected ':' after match expression")?;
         
         let mut arms = Vec::new();
-        while !self.is_at_end() && !self.check(&TokenType::Def) && !self.check(&TokenType::Map) && 
+        while !self.is_at_end() && !self.check(&TokenType::Def) &&
               !self.check(&TokenType::Field) && !self.check(&TokenType::Comp) && !self.check(&TokenType::Enum) {
             arms.push(self.parse_match_arm()?);
         }
@@ -726,9 +1015,14 @@ impl Parser {
         
         while !self.is_at_end() && !self.check(&TokenType::Else) && !self.check(&TokenType::RBrace) {
             // Check for end of block conditions
-            if self.check(&TokenType::Def) || self.check(&TokenType::Map) || 
+            if self.check(&TokenType::Def) || 
                self.check(&TokenType::Field) || self.check(&TokenType::Comp) || 
                self.check(&TokenType::Enum) {
+                break;
+            }
+            
+            // Also break on EOF to prevent infinite loops
+            if self.check(&TokenType::EOF) {
                 break;
             }
             
@@ -853,48 +1147,35 @@ fn parse_unary(&mut self) -> Result<Expr, ParseError> {
 }
 
 fn parse_primary(&mut self) -> Result<Expr, ParseError> {
-    match &self.peek().token_type {
+    let mut expr = match &self.peek().token_type {
         TokenType::Number(n) => {
+            let value = *n;
             self.advance();
-            Ok(Expr::Literal(Literal::Number(*n)))
+            Expr::Literal(Literal::Number(value))
         }
         TokenType::String(s) => {
+            let value = s.clone();
             self.advance();
-            Ok(Expr::Literal(Literal::String(s.clone())))
+            Expr::Literal(Literal::String(value))
         }
         TokenType::Boolean(b) => {
+            let value = *b;
             self.advance();
-            Ok(Expr::Literal(Literal::Boolean(*b)))
+            Expr::Literal(Literal::Boolean(value))
         }
         TokenType::Nil => {
             self.advance();
-            Ok(Expr::Literal(Literal::Nil))
+            Expr::Literal(Literal::Nil)
         }
         TokenType::Identifier(_) => {
             let name = self.consume_identifier("Expected identifier")?;
-            
-            // Check if this is a function call
-            if self.match_token(&TokenType::LParen) {
-                let mut args = Vec::new();
-                if !self.check(&TokenType::RParen) {
-                    loop {
-                        args.push(self.parse_expression()?);
-                        if !self.match_token(&TokenType::Comma) {
-                            break;
-                        }
-                    }
-                }
-                self.consume(&TokenType::RParen, "Expected ')' after arguments")?;
-                Ok(Expr::Call { callee: name, args })
-            } else {
-                Ok(Expr::Identifier(name))
-            }
+            Expr::Identifier(name)
         }
         TokenType::LParen => {
             self.advance();
             let expr = self.parse_expression()?;
             self.consume(&TokenType::RParen, "Expected ')' after expression")?;
-            Ok(expr)
+            expr
         }
         TokenType::LBracket => {
             self.advance();
@@ -908,10 +1189,69 @@ fn parse_primary(&mut self) -> Result<Expr, ParseError> {
                 }
             }
             self.consume(&TokenType::RBracket, "Expected ']' after array elements")?;
-            Ok(Expr::ArrayLiteral(elements))
+            Expr::ArrayLiteral(elements)
         }
-        _ => Err(ParseError::InvalidExpression),
+        _ => return Err(ParseError::InvalidExpression),
+    };
+
+    // Handle chained member access, index access, and function calls
+    loop {
+        if self.match_token(&TokenType::Dot) {
+            let member = self.consume_identifier("Expected member name after '.'")?;
+            
+            // Check if this is a member function call
+            if self.match_token(&TokenType::LParen) {
+                let mut args = Vec::new();
+                if !self.check(&TokenType::RParen) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if !self.match_token(&TokenType::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&TokenType::RParen, "Expected ')' after arguments")?;
+                expr = Expr::MemberCall {
+                    object: Box::new(expr),
+                    method: member,
+                    args,
+                };
+            } else {
+                expr = Expr::MemberAccess {
+                    object: Box::new(expr),
+                    member,
+                };
+            }
+        } else if self.match_token(&TokenType::LBracket) {
+            let index = self.parse_expression()?;
+            self.consume(&TokenType::RBracket, "Expected ']' after index")?;
+            expr = Expr::IndexAccess {
+                object: Box::new(expr),
+                index: Box::new(index),
+            };
+        } else if self.match_token(&TokenType::LParen) {
+            // Function call
+            if let Expr::Identifier(name) = expr {
+                let mut args = Vec::new();
+                if !self.check(&TokenType::RParen) {
+                    loop {
+                        args.push(self.parse_expression()?);
+                        if !self.match_token(&TokenType::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&TokenType::RParen, "Expected ')' after arguments")?;
+                expr = Expr::Call { callee: name, args };
+            } else {
+                return Err(ParseError::InvalidExpression);
+            }
+        } else {
+            break;
+        }
     }
+
+    Ok(expr)
 }
 
 fn parse_type_annotation(&mut self) -> Result<Type, ParseError> {
@@ -966,8 +1306,9 @@ fn parse_type_annotation(&mut self) -> Result<Type, ParseError> {
         TokenType::Bit => { self.advance(); Type::Bit }
         TokenType::Nil => { self.advance(); Type::Nil }
         TokenType::Identifier(name) => {
+            let custom_name = name.clone();
             self.advance();
-            Type::Custom(name.clone())
+            Type::Custom(custom_name)
         }
         _ => return Err(ParseError::InvalidType("Expected valid type".to_string())),
     };
